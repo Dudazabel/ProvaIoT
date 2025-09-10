@@ -1,28 +1,27 @@
 #include <Servo.h>
-#include <esp32-hal-gpio.h>
-#include <HardwareSerial.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#define SCREEN_WIDTH 128  // Largura do display
-#define SCREEN_HEIGHT 64  // Altura do display
-#define OLED_RESET    -1  // Reseta o display, se necessário
+#define SCREEN_WIDTH 128  
+#define SCREEN_HEIGHT 64  
+#define OLED_RESET    -1  
 
 // Pinos de controle
-const int trigPin = 14;      // Pino do Trigger do sensor ultrassônico (não usado aqui, mas definido)
-const int echoPin = 27;      // Pino do Echo do sensor ultrassônico (não usado aqui, mas definido)
-const int buttonPin = 23;    // Pino do botão
-const int buzzerPin = 2;     // Pino do buzzer
-const int ledVerde = 12;     // Pino do LED verde
-const int ledVermelho = 13;  // Pino do LED vermelho
-const int servoPin = 9;      // Pino do servo motor
+const int trigPin = 5;        // Sensor ultrassônico TRIG
+const int echoPin = 18;       // Sensor ultrassônico ECHO
+const int buttonPin = 23;     // Botão
+const int buzzerPin = 2;      // Buzzer
+const int ledVerde = 26;      // LED verde (não pode usar GPIO34)
+const int ledVermelho = 15;   // LED vermelho
+const int servoPin = 25;      // Servo motor
 
 Servo meuServo;  
 
 bool portaoAberto = false;
 unsigned long lastDebounceTime = 0;  
 unsigned long debounceDelay = 50;    
+unsigned long portaoAbertoTime = 0;  
 int buttonState;                     
 int lastButtonState = HIGH;          
 
@@ -34,84 +33,79 @@ void setup() {
 
   // Configura os pinos
   pinMode(buzzerPin, OUTPUT);
-  pinMode(ledVerde, OUTPUT);  // LED verde
-  pinMode(ledVermelho, OUTPUT);  // LED vermelho
+  pinMode(ledVerde, OUTPUT);
+  pinMode(ledVermelho, OUTPUT);
   pinMode(buttonPin, INPUT);
-  pinMode(trigPin, OUTPUT);  // Pino do sensor ultrassônico (não usado aqui, mas definido)
-  pinMode(echoPin, INPUT);   // Pino do sensor ultrassônico (não usado aqui, mas definido)
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
 
+  // Inicializa o servo
   meuServo.attach(servoPin);  
-  meuServo.write(0);  // Inicializa o servo fechado (0 graus)
+  meuServo.write(0);  // Portão fechado
 
-  // Inicializa os LEDs e o buzzer
+  // Inicializa LEDs e buzzer
   digitalWrite(buzzerPin, LOW);
-  digitalWrite(ledVerde, LOW);  // LED verde apagado
-  digitalWrite(ledVermelho, HIGH);  // LED vermelho aceso (não pode passar)
+  digitalWrite(ledVerde, LOW);
+  digitalWrite(ledVermelho, HIGH);
 
-  // Inicializando o display OLED com I2C
-  Wire.begin(21, 22); // Pinos I2C (SDA: 21, SCL: 22)
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // Endereço I2C padrão: 0x3C
+  // Inicializando o display OLED
+  Wire.begin(21, 22); // SDA: 21, SCL: 22
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  
     Serial.println(F("Falha ao inicializar o display OLED"));
     while (1);
   }
-
-  display.display();  // Exibe uma tela inicial
-  delay(2000);        // Espera 2 segundos
 
   display.clearDisplay();
   display.setTextSize(1);      
   display.setTextColor(SSD1306_WHITE);  
   display.setCursor(0,0);
-  display.println(F("Display OLED"));
-  display.println(F("Inicializado!"));
+  display.println(F("Display OLED Inicializado!"));
   display.display();
+  delay(2000);
+  display.clearDisplay();
 }
 
 void loop() {
   int reading = digitalRead(buttonPin);  
 
-  // Debounce para o botão
+  // Debounce
   if (reading != lastButtonState) {
     lastDebounceTime = millis();  
   }
 
   if ((millis() - lastDebounceTime) > debounceDelay) {
-    // Se o botão for pressionado
     if (reading == LOW && lastButtonState == HIGH && !portaoAberto) {
       Serial.println("Botão pressionado! Abrindo o portão...");
       
-      meuServo.write(90);  // Abre o portão (servo 90 graus)
-      digitalWrite(ledVerde, HIGH);  // Acende o LED verde (pode passar)
-      digitalWrite(ledVermelho, LOW);  // Apaga o LED vermelho
-      digitalWrite(buzzerPin, HIGH);    // Liga o buzzer
+      meuServo.write(90);  // Abre o portão
+      digitalWrite(ledVerde, HIGH);
+      digitalWrite(ledVermelho, LOW);
+      digitalWrite(buzzerPin, HIGH);
       
-      // Display de status
       display.clearDisplay();
       display.setCursor(0, 0);
       display.println("Portão Aberto");
       display.display();
       
       portaoAberto = true;  
+      portaoAbertoTime = millis();
     }
   }
 
-  if (portaoAberto) {
-    delay(5000);  // Espera 5 segundos (simula o tempo do carro passando)
+  lastButtonState = reading;
 
-    meuServo.write(0);  // Fecha o portão (servo 0 graus)
-    digitalWrite(ledVerde, LOW);   // Apaga o LED verde
-    digitalWrite(ledVermelho, HIGH);    // Acende o LED vermelho (não pode passar)
-    digitalWrite(buzzerPin, LOW);      // Desliga o buzzer
-
-    // Display de status
+  // Fecha portão após 5 segundos sem bloquear o loop
+  if (portaoAberto && (millis() - portaoAbertoTime >= 5000)) {
+    meuServo.write(0);  // Fecha portão
+    digitalWrite(ledVerde, LOW);
+    digitalWrite(ledVermelho, HIGH);
+    digitalWrite(buzzerPin, LOW);
+    
     display.clearDisplay();
     display.setCursor(0, 0);
     display.println("Portão Fechado");
     display.display();
-    
+
     portaoAberto = false;  
   }
-
-  lastButtonState = reading;
 }
